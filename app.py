@@ -14,7 +14,10 @@ from agents.interaction import create_interaction_agent, interaction_task
 from agents.risk import create_risk_agent, risk_task
 from agents.translator import create_translator_agent, translator_task
 from agents.ethics import create_ethics_agent, ethics_task
+from agents.consensus import run_consensus_risk_assessment, aggregate_consensus
 from models.medication import Medication, AnalysisResult, Interaction
+from utils.database import AnalysisDatabase
+from utils.exporter import AnalysisExporter
 
 # Load environment variables from .env (for GROQ_API_KEY)
 load_dotenv()
@@ -46,7 +49,9 @@ BOX = {
     "h": "═", "v": "║", "t": "╦", "b": "╩",
     "l": "╠", "r": "╣", "c": "╬"
 }
-
+# Initialize database and exporter
+db = AnalysisDatabase()
+exporter = AnalysisExporter()
 
 def clear_screen():
     """Clear terminal for a clean view."""
@@ -79,15 +84,87 @@ def print_header():
     print(BOX["bl"] + BOX["h"] * (width - 2) + BOX["br"])
     print()
 
+def show_menu():
+    """Display main menu options."""
+    print(f"{Style.BRIGHT}┌─ Main Menu ─────────────────────────────────────────────────┐{Style.RESET_ALL}")
+    print(f"{Style.BRIGHT}│{Style.RESET_ALL}  {Fore.CYAN}[1]{Style.RESET_ALL} 🔬 {Style.BRIGHT}Analyze{Style.RESET_ALL}  - Run new medication analysis          {Style.BRIGHT}│{Style.RESET_ALL}")
+    print(f"{Style.BRIGHT}│{Style.RESET_ALL}  {Fore.CYAN}[2]{Style.RESET_ALL} 📜 {Style.BRIGHT}History{Style.RESET_ALL}  - View recent analyses                 {Style.BRIGHT}│{Style.RESET_ALL}")
+    print(f"{Style.BRIGHT}│{Style.RESET_ALL}  {Fore.CYAN}[3]{Style.RESET_ALL} 💾 {Style.BRIGHT}Export{Style.RESET_ALL}   - Export last analysis (json/txt/md)   {Style.BRIGHT}│{Style.RESET_ALL}")
+    print(f"{Style.BRIGHT}│{Style.RESET_ALL}  {Fore.CYAN}[4]{Style.RESET_ALL} ❓ {Style.BRIGHT}Help{Style.RESET_ALL}     - Show this menu                      {Style.BRIGHT}│{Style.RESET_ALL}")
+    print(f"{Style.BRIGHT}│{Style.RESET_ALL}  {Fore.CYAN}[5]{Style.RESET_ALL} 🚪 {Style.BRIGHT}Quit{Style.RESET_ALL}     - Exit application                     {Style.BRIGHT}│{Style.RESET_ALL}")
+    print(f"{Style.BRIGHT}└─────────────────────────────────────────────────────────────┘{Style.RESET_ALL}")
+    print(f"{Style.DIM}💡 Tip: Type medication names directly or use menu numbers{Style.RESET_ALL}")
+    print()
+
+def show_history():
+    """Display recent analysis history."""
+    history = db.get_recent_analyses(10)
+    
+    if not history:
+        print(f"{Style.DIM}No analysis history found.{Style.RESET_ALL}\n")
+        return
+    
+    print(f"{Style.BRIGHT}📜 Recent Analyses{Style.RESET_ALL}")
+    print("─" * 120)
+    
+    for record in history:
+        analysis_id, timestamp, medications, interactions, risk = record
+        dt = datetime.fromisoformat(timestamp)
+        formatted_time = dt.strftime("%b %d, %I:%M %p")
+        
+        risk_icon = RISK_COLORS.get(risk, risk.upper())
+        interaction_text = f"{interactions} interaction(s)" if interactions else "No interactions"
+        
+        print(f"  {Style.DIM}[{analysis_id}]{Style.RESET_ALL} {formatted_time} - {Fore.CYAN}{medications}{Style.RESET_ALL}")
+        print(f"      {interaction_text} • Risk: {risk_icon}")
+        print()
+
+def export_last_analysis(format_type='json'):
+    """Export the most recent analysis."""
+    history = db.get_recent_analyses(1)
+    
+    if not history:
+        print(f"{Fore.RED}✗ No analysis found to export.{Style.RESET_ALL}\n")
+        return
+    
+    analysis_id = history[0][0]
+    medications = history[0][2].split(", ")
+    result = db.get_analysis_by_id(analysis_id)
+    
+    if not result:
+        print(f"{Fore.RED}✗ Failed to load analysis.{Style.RESET_ALL}\n")
+        return
+    
+    try:
+        if format_type == 'json':
+            filepath = exporter.export_to_json(result, medications)
+        elif format_type == 'txt':
+            filepath = exporter.export_to_text(result, medications)
+        elif format_type == 'md':
+            filepath = exporter.export_to_markdown(result, medications)
+        else:
+            print(f"{Fore.RED}✗ Invalid format. Use: json, txt, or md{Style.RESET_ALL}\n")
+            return
+        
+        print(f"{Fore.GREEN}✓ Exported to: {filepath}{Style.RESET_ALL}\n")
+    except Exception as e:
+        print(f"{Fore.RED}✗ Export failed: {str(e)}{Style.RESET_ALL}\n")
+
 def get_user_input():
     """Get medication input from user."""
     print(f"{Style.DIM}Enter medications (comma-separated):{Style.RESET_ALL}")
     print(f"{Style.DIM}Example: aspirin, ibuprofen, vitamin-d{Style.RESET_ALL}")
+    print(f"{Style.DIM}Add 'consensus' for multi-agent voting: aspirin, warfarin consensus{Style.RESET_ALL}")
     user_input = input("> ").strip().lower()
     return user_input
 
-def run_analysis(user_inputs):
-    """Run the 5-agent workflow."""
+def run_analysis(user_inputs, use_consensus=False):
+    """Run the 5-agent workflow with optional consensus mode."""
+    # Check for consensus flag
+    if 'consensus' in user_inputs:
+        use_consensus = True
+        user_inputs = user_inputs.replace('consensus', '').strip()
+    
     meds = [m.strip() for m in user_inputs.split(',') if m.strip()]
     
     if not meds:
@@ -95,22 +172,29 @@ def run_analysis(user_inputs):
         return None
     
     print(f"\n{Fore.CYAN}► Analyzing:{Style.RESET_ALL} {', '.join(meds)}")
-    print(f"{Style.DIM}Processing through 5-agent workflow...{Style.RESET_ALL}\n")
+    
+    if use_consensus:
+        print(f"{Style.BRIGHT}{Fore.YELLOW}🗳️  CONSENSUS MODE: Running 3 independent risk assessors{Style.RESET_ALL}")
+    
+    print(f"{Style.DIM}Processing through {'7-agent' if use_consensus else '5-agent'} workflow...{Style.RESET_ALL}\n")
     
     # Progress bar
     stages = [
         "Interpreting substances",
         "Analyzing interactions",
-        "Assessing risks",
-        "Translating results",
-        "Applying safety checks"
+        "Running consensus vote" if use_consensus else "Assessing risks",
+        "Aggregating assessments" if use_consensus else "Translating results",
+        "Translating results" if use_consensus else "Applying safety checks",
+        "Applying safety checks" if use_consensus else None
     ]
+    stages = [s for s in stages if s]  # Remove None
     
     def show_progress(stage_num):
         bar_width = 40
-        filled = int(bar_width * stage_num / 5)
+        total_stages = len(stages)
+        filled = int(bar_width * stage_num / total_stages)
         bar = "█" * filled + "░" * (bar_width - filled)
-        percent = int(100 * stage_num / 5)
+        percent = int(100 * stage_num / total_stages)
         print(f"\r{Fore.CYAN}[{bar}] {percent}%{Style.RESET_ALL} {stages[stage_num-1] if stage_num > 0 else ''}", end="", flush=True)
     
     show_progress(0)
@@ -125,7 +209,7 @@ def run_analysis(user_inputs):
         if not isinstance(meds_list, list):
             meds_list = [meds_list]
         
-        # Step 2: Interaction Analysis (skip hallucinations for single med)
+        # Step 2: Interaction Analysis
         show_progress(2)
         if len(meds_list) < 2:
             interactions = []
@@ -139,30 +223,41 @@ def run_analysis(user_inputs):
             if not isinstance(interactions, list):
                 interactions = [interactions]
         
-        # Step 3: Risk Stratification
+        # Step 3: Risk Assessment (normal or consensus)
         show_progress(3)
-        risk_a = create_risk_agent()
-        risk_t = risk_task(risk_a, interactions)
-        risk_output = Crew(agents=[risk_a], tasks=[risk_t], verbose=0).kickoff()
-        risks = _extract_json(risk_output, "Risk")
-        if isinstance(risks, dict):
-            risks = risks.get("risks", [])
-        if not isinstance(risks, list):
-            risks = [risks]
+        if use_consensus and interactions:
+            # Consensus mode: 3 agents vote
+            med_names = [m.get('name', 'Unknown') if isinstance(m, dict) else str(m) for m in meds_list]
+            agent_results = run_consensus_risk_assessment(interactions, med_names)
+            
+            show_progress(4)
+            consensus_result = aggregate_consensus(agent_results)
+            risks = consensus_result.get('risks', []) if consensus_result else []
+        else:
+            # Normal mode: single risk agent
+            risk_a = create_risk_agent()
+            risk_t = risk_task(risk_a, interactions)
+            risk_output = Crew(agents=[risk_a], tasks=[risk_t], verbose=0).kickoff()
+            risks = _extract_json(risk_output, "Risk")
+            if isinstance(risks, dict):
+                risks = risks.get("risks", [])
+            if not isinstance(risks, list):
+                risks = [risks]
         
-        # Step 4: Plain-English Translation
-        show_progress(4)
+        # Step 4: Translation
+        show_progress(5 if use_consensus else 4)
         trans_a = create_translator_agent()
         trans_t = translator_task(trans_a, interactions, risks)
         trans_output = Crew(agents=[trans_a], tasks=[trans_t], verbose=0).kickoff()
         trans_result = _extract_json(trans_output, "Translator")
         
-        # Step 5: Ethics Guard
-        show_progress(5)
+        # Step 5: Ethics
+        show_progress(6 if use_consensus else 5)
         ethics_a = create_ethics_agent()
         ethics_t = ethics_task(ethics_a, AnalysisResult(**trans_result))
         final_output = Crew(agents=[ethics_a], tasks=[ethics_t], verbose=0).kickoff()
         final_analysis = _extract_json(final_output, "Ethics")
+        
         if isinstance(final_analysis, list):
             final_analysis = {
                 "medications": meds_list,
@@ -171,7 +266,7 @@ def run_analysis(user_inputs):
                 "analysis": final_analysis,
             }
 
-        # Ensure required fields are present and normalized
+        # Normalize fields
         final_analysis.setdefault(
             "medications",
             [m.get("name", "Unknown") if isinstance(m, dict) else str(m) for m in meds_list],
@@ -184,6 +279,9 @@ def run_analysis(user_inputs):
         
         print(f"\r{Fore.GREEN}[{'█' * 40}] 100%{Style.RESET_ALL} Complete!" + " " * 30)
         print()
+        
+        # Save to database
+        db.save_analysis(meds, final_analysis)
         
         return final_analysis
     
@@ -341,6 +439,14 @@ def display_results(analysis):
 
     # Risk Assessment Section
     print(f"{Style.BRIGHT}► Risk Assessment{Style.RESET_ALL}")
+    
+    # Show consensus info if present
+    if risks and risks[0].get('voting_breakdown'):
+        voting = risks[0]['voting_breakdown']
+        agent_count = risks[0].get('agent_count', 3)
+        print(f"{Style.DIM}  🗳️  Consensus from {agent_count} independent assessors: " +
+              f"Safe({voting.get('safe', 0)}) • Caution({voting.get('caution', 0)}) • Avoid({voting.get('avoid', 0)}){Style.RESET_ALL}")
+    
     print("─" * 120)
     risks = analysis.get('risks', [])
     if risks:
@@ -390,23 +496,65 @@ def display_results(analysis):
     print()
 
 def main():
-    """Main CLI loop."""
+    """Main CLI loop with menu system."""
     print_header()
+    show_menu()
+    
+    last_analysis = None
     
     while True:
-        user_input = get_user_input()
+        user_input = input(f"{Fore.CYAN}rxlens>{Style.RESET_ALL} ").strip()
+        user_input_lower = user_input.lower()
         
-        if user_input.lower() in ['quit', 'exit', 'q']:
+        # Handle numeric menu options
+        if user_input == '1':
+            user_input_lower = 'analyze'
+        elif user_input == '2':
+            user_input_lower = 'history'
+        elif user_input == '3':
+            user_input_lower = 'export'
+        elif user_input == '4':
+            user_input_lower = 'help'
+        elif user_input == '5':
+            user_input_lower = 'quit'
+        
+        if user_input_lower in ['quit', 'exit', 'q', '5']:
             clear_screen()
-            print("Thank you for using RxLens.\n")
+            print(f"{Fore.GREEN}Thank you for using RxLens. Stay informed, stay safe.{Style.RESET_ALL}\n")
             sys.exit(0)
         
-        analysis = run_analysis(user_input)
+        elif user_input_lower == 'help':
+            show_menu()
         
-        if analysis:
-            display_results(analysis)
+        elif user_input_lower == 'history':
+            show_history()
         
-        print(f"{Style.DIM}Enter 'q' to quit, or enter new medications to analyze.{Style.RESET_ALL}\n")
+        elif user_input_lower.startswith('export'):
+            # Parse export format: "export json" or just "export"
+            parts = user_input_lower.split()
+            format_type = parts[1] if len(parts) > 1 else 'json'
+            export_last_analysis(format_type)
+        
+        elif user_input_lower in ['analyze', 'analyse', '']:
+            # Start analysis workflow with input prompt
+            meds_input = get_user_input()
+            
+            if meds_input.lower() in ['quit', 'exit', 'q']:
+                continue
+            
+            analysis = run_analysis(meds_input)
+            
+            if analysis:
+                last_analysis = analysis
+                display_results(analysis)
+        
+        else:
+            # Treat any other input as direct medication entry
+            analysis = run_analysis(user_input)
+            
+            if analysis:
+                last_analysis = analysis
+                display_results(analysis)
 
 if __name__ == "__main__":
     main()

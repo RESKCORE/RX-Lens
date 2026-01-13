@@ -30,12 +30,27 @@ RxLens is a sophisticated command-line application that leverages multi-agent AI
 ## ✨ Features
 
 ### 🤖 Multi-Agent AI Architecture
-- **5-Stage Sequential Analysis Pipeline**:
+
+#### **Standard Mode: 5-Agent Sequential Pipeline**
   1. **Interpreter Agent**: Normalizes and validates medication input
   2. **Interaction Agent**: Identifies pharmacological overlap and interaction vectors
   3. **Risk Agent**: Assesses severity levels with confidence scoring
   4. **Translator Agent**: Converts technical findings to plain English
   5. **Ethics Agent**: Ensures educational framing and removes prescriptive language
+
+#### **Consensus Mode: 7-Agent Voting System** (Tier 2 Upgrade)
+  - **3 Independent Risk Assessors** run in parallel:
+    - Agent 1: Pharmacokinetic analysis (metabolism, CYP enzymes)
+    - Agent 2: Pharmacodynamic effects (receptor interactions)
+    - Agent 3: Clinical significance (real-world impact)
+  - **Majority Voting Algorithm**: Aggregates assessments with confidence weighting
+  - **Transparent Disagreement**: Shows voting breakdown (Safe/Caution/Avoid counts)
+  - **Reduces Single-Agent Bias**: Cross-validation prevents hallucination and overconfidence
+
+**Usage**: Add `consensus` keyword to any analysis
+```bash
+> aspirin, warfarin consensus
+```
 
 ### 📊 Professional Interface
 - **Real-time Progress Tracking**: Visual progress bars with stage indicators
@@ -45,18 +60,50 @@ RxLens is a sophisticated command-line application that leverages multi-agent AI
 - **Key Findings Summary**: Quick-glance analysis highlights with bullet points
 - **Timestamp Tracking**: Analysis provenance for record-keeping
 
-### 🔍 Analysis Capabilities
+### � Session Persistence & Export (Tier 2)
+- **SQLite Database**: Auto-saves all analyses with timestamps
+- **Analysis History**: View past interactions with `history` command
+- **Multi-Format Export**:
+  - `export <id> json` - Structured JSON for data processing
+  - `export <id> txt` - Formatted text with Unicode borders
+  - `export <id> md` - Markdown for documentation
+
+**Example:**
+```bash
+> aspirin, warfarin
+# Analysis runs, auto-saved as ID #1
+
+> history
+# Shows list of past analyses
+
+> export 1 txt
+# Saves formatted report to rxlens_analysis_1.txt
+```
+
+### �🔍 Analysis Capabilities
 - Detects pharmacokinetic and pharmacodynamic interactions
 - Identifies shared metabolic pathways (CYP enzymes, transporters)
 - Assesses additive/synergistic effects
 - Provides mechanism-specific explanations (e.g., "Both NSAIDs inhibit COX enzymes")
 - Confidence-weighted recommendations
 
-### 🛡️ Safety & Ethics
-- Automatic medical disclaimer insertion
-- Removal of diagnostic/action-oriented phrasing
-- Preservation of medication names (prevents generic substitution errors)
-- Educational language enforcement
+### 🛡️ Safety & Ethics Framework
+
+RxLens implements a **dedicated Ethics Agent** that enforces non-prescriptive guidelines:
+
+**Detection & Removal:**
+- ❌ Command language: "you must", "stop taking", "increase dose"
+- ❌ Diagnostic phrasing: "you have", "this indicates", "diagnosis"
+- ❌ Medical advice: "consult immediately", "change medication"
+
+**Preservation & Enhancement:**
+- ✅ Mechanism explanations: HOW drugs interact (e.g., "both inhibit COX enzymes")
+- ✅ Risk awareness: WHAT to monitor for (e.g., "may increase bleeding")
+- ✅ Conditional language: Uses "may/might/could" instead of "will/does"
+- ✅ Professional guidance: Always includes disclaimer
+
+**Design Philosophy:**
+Inspired by FDA educational labeling standards - **inform, never instruct**. The system empowers users with knowledge while explicitly deferring medical decisions to healthcare professionals.
 
 ---
 
@@ -216,6 +263,30 @@ Example: aspirin, ibuprofen, vitamin-d
 ```
 
 ### Advanced Usage
+
+**Consensus Mode Analysis**
+```
+> aspirin, warfarin consensus
+# Runs 3 parallel risk agents with voting
+```
+
+**View Analysis History**
+```
+> history
+# Shows past analyses with timestamps and risk levels
+```
+
+**Export Analysis**
+```
+> export 1 json
+# Exports analysis #1 to JSON format
+
+> export 2 txt
+# Exports analysis #2 to formatted text with Unicode borders
+
+> export 3 md
+# Exports analysis #3 to Markdown
+```
 
 **Exit Application**
 ```
