@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-13T18:33:32.794861",
+    "medications_analyzed": [
+      "warfarin",
+      "aspirin",
+      "ibuprofen"
+    ],
+    "tool": "RxLens v1.0"
+  },
+  "analysis": {
+    "interactions": [
+      {
+        "meds_involved": [
+          "warfarin",
+          "aspirin"
+        ],
+        "description": "Warfarin and aspirin both thin the blood, which can increase the risk of bleeding when taken together. Warfarin works by inhibiting vitamin K-dependent clotting factors, while aspirin inhibits platelet aggregation, enhancing the risk of bleeding complications.",
+        "confidence": "high"
+      },
+      {
+        "meds_involved": [
+          "warfarin",
+          "ibuprofen"
+        ],
+        "description": "Warfarin and ibuprofen can interact by affecting blood clotting and platelet function, potentially increasing the risk of bleeding. Warfarin inhibits vitamin K-dependent clotting factors, and ibuprofen, as an NSAID, can inhibit platelet aggregation and alter the balance of prostaglandins.",
+        "confidence": "medium"
+      },
+      {
+        "meds_involved": [
+          "aspirin",
+          "ibuprofen"
+        ],
+        "description": "Aspirin and ibuprofen are both NSAIDs that can irritate the stomach lining and increase the risk of gastrointestinal bleeding due to their combined effect on prostaglandin production and platelet function.",
+        "confidence": "high"
+      }
+    ],
+    "risks": [
+      {
+        "level": "caution",
+        "explanation": "Taking warfarin with aspirin or ibuprofen may increase the risk of bleeding, including stomach upset and gastrointestinal bleeding. It is essential to be aware of the potential for bleeding and monitor for signs of bleeding, seeking medical attention if symptoms occur.",
+        "confidence": "high"
+      }
+    ],
+    "disclaimer": "This is for general awareness only; professional guidance is essential.",
+    "medications": [
+      "warfarin",
+      "aspirin",
+      "ibuprofen"
+    ]
+  }
+}
